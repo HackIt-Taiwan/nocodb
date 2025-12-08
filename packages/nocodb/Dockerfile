@@ -43,6 +43,9 @@ COPY --link . .
 COPY --link ./docker/start-litestream.sh /usr/src/appEntry/start.sh
 COPY --link src/public/ ./docker/public/
 
+# Use published nocodb-sdk instead of workspace protocol (build context lacks other workspace packages)
+RUN node -e "const fs=require('fs');const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));pkg.dependencies['nocodb-sdk']=pkg.version;fs.writeFileSync('package.json',JSON.stringify(pkg,null,2));"
+
 # Configure pnpm to use hoisted node_modules for modclean compatibility
 RUN echo "node-linker=hoisted" > .npmrc
 
