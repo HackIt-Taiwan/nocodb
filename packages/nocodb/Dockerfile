@@ -38,9 +38,8 @@ RUN python3 --version && python --version
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
-# Copy application dependency manifests to the container image.
-COPY --link ./package.json ./package.json
-COPY --link ./docker/main.js ./docker/main.js
+# Copy source
+COPY --link . .
 COPY --link ./docker/start-litestream.sh /usr/src/appEntry/start.sh
 COPY --link src/public/ ./docker/public/
 
@@ -50,6 +49,7 @@ RUN echo "node-linker=hoisted" > .npmrc
 # Install production dependencies, reduce node_modules size with modclean,
 # remove sqlite deps, and add execute permission to start.sh
 RUN pnpm install --prod --shamefully-hoist \
+    && pnpm run docker:build \
     && pnpm dlx modclean --patterns="default:*" --ignore="nc-lib-gui/**,dayjs/**,express-status-monitor/**,@azure/msal-node/dist/**,@react-email/**,@linear/**,jsdom/**" --run \
     && rm -rf ./node_modules/sqlite3/deps \
     && chmod +x /usr/src/appEntry/start.sh
