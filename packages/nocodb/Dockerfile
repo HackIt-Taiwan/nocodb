@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 
 # build litestream
 RUN git clone https://github.com/benbjohnson/litestream.git litestream
-RUN cd litestream && go install ./cmd/litestream
+RUN cd litestream && GOTOOLCHAIN=auto go install ./cmd/litestream
 RUN cp $GOPATH/bin/litestream /usr/src/lt
 
 ###########
