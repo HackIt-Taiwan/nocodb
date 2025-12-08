@@ -15,8 +15,8 @@ services:
 
   nocodb:
     build:
-      context: .
-      dockerfile: packages/nocodb/Dockerfile
+      context: ./packages/nocodb
+      dockerfile: ./Dockerfile
     restart: unless-stopped
     environment:
       NC_DB: ${NC_DB:?set to your external DB, e.g. pg://user:pass@host:5432/dbname}
