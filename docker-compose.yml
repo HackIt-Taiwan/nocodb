@@ -76,6 +76,7 @@ services:
       sh -c "pnpm install --prod && pnpm --filter nocodb start"
     volumes:
       - nocodb_data:/usr/app/data
+      - /opt/do/certs/ca-certificate.crt:/certs/ca-certificate.crt:ro
 
 volumes:
   redis_data:
