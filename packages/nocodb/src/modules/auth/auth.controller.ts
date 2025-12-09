@@ -8,6 +8,7 @@ import {
   Req,
   Res,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
@@ -38,8 +39,49 @@ export class AuthController {
     protected readonly config: ConfigService<AppConfig>,
   ) {}
 
+  private readonly logger = new Logger(AuthController.name);
+
   private ensureSsoOnly() {
     NcError.forbidden('Sign in with SSO via Passport');
+  }
+
+  private resolveSiteUrl(req: NcRequest) {
+    const envUrl = process.env.NC_PUBLIC_URL?.replace(/\/+$/, '');
+    const reqUrl = (req as any).ncSiteUrl?.replace(/\/+$/, '');
+    return envUrl || reqUrl || '';
+  }
+
+  private formatAxiosError(err: any): string | undefined {
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      let body: string | undefined;
+
+      try {
+        if (typeof err.response?.data === 'string') {
+          body = err.response.data;
+        } else if (err.response?.data) {
+          body = JSON.stringify(err.response.data);
+        }
+
+        if (body?.length > 500) {
+          body = `${body.slice(0, 500)}...`;
+        }
+      } catch {
+        // ignore JSON stringify failures
+      }
+
+      const parts = [];
+      if (status) parts.push(`status ${status}`);
+      if (err.code) parts.push(`code ${err.code}`);
+      if (body) parts.push(`body ${body}`);
+      return parts.join(' | ');
+    }
+
+    if (err instanceof Error) {
+      return err.message;
+    }
+
+    return undefined;
   }
 
   private getPassportConfig() {
@@ -65,10 +107,7 @@ export class AuthController {
       NcError.forbidden('Passport SSO is not configured');
     }
 
-    const siteUrl =
-      (req as any).ncSiteUrl?.replace(/\/+$/, '') ||
-      process.env.NC_PUBLIC_URL?.replace(/\/+$/, '') ||
-      '';
+    const siteUrl = this.resolveSiteUrl(req);
     const redirectUri = `${siteUrl}/auth/passport/callback`;
     const dashboardPath = Noco.getConfig().dashboardPath || '/';
     const restartUri = `${siteUrl}${dashboardPath}#/signin`;
@@ -92,10 +131,21 @@ export class AuthController {
       );
       data = response.data;
     } catch (err) {
-      NcError.forbidden('Failed to initiate SSO');
+      const detail = this.formatAxiosError(err);
+      this.logger.error(
+        `Passport consent request failed${detail ? `: ${detail}` : ''}`,
+      );
+      NcError.forbidden(
+        detail ? `Failed to initiate SSO (${detail})` : 'Failed to initiate SSO',
+      );
     }
 
     if (!data?.consent_url) {
+      this.logger.error(
+        `Passport consent request missing consent_url. Raw response: ${JSON.stringify(
+          data || {},
+        )}`,
+      );
       NcError.forbidden('SSO initiation failed');
     }
 
@@ -131,7 +181,13 @@ export class AuthController {
       );
       tokenData = tokenRes.data;
     } catch (err) {
-      NcError.forbidden('SSO login failed');
+      const detail = this.formatAxiosError(err);
+      this.logger.error(
+        `Passport consent token exchange failed${detail ? `: ${detail}` : ''}`,
+      );
+      NcError.forbidden(
+        detail ? `SSO login failed (${detail})` : 'SSO login failed',
+      );
     }
 
     const profile = tokenData?.user;
@@ -175,10 +231,7 @@ export class AuthController {
     await this.setRefreshToken({ req, res });
     await this.usersService.login(req.user, req);
 
-    const siteUrl =
-      (req as any).ncSiteUrl?.replace(/\/+$/, '') ||
-      process.env.NC_PUBLIC_URL?.replace(/\/+$/, '') ||
-      '';
+    const siteUrl = this.resolveSiteUrl(req);
     const dashboardPath = Noco.getConfig().dashboardPath || '/';
     return res.redirect(`${siteUrl}${dashboardPath}`);
   }
