@@ -230,18 +230,30 @@ export class AuthController {
     }
 
     // attach extra meta (avatar/language)
-    await this.usersService.profileUpdate({
-      id: user.id,
-      params: {
-        display_name: profile.nickname,
-        avatar: profile.avatar_url ?? user.avatar,
-        meta: {
-          ...(user.meta ?? {}),
-          preferred_language: profile.preferred_language,
+    // this is best‑effort only – if the underlying schema is missing optional
+    // columns, avoid breaking the whole login flow
+    try {
+      await this.usersService.profileUpdate({
+        id: user.id,
+        params: {
+          display_name: profile.nickname,
+          avatar: profile.avatar_url ?? user.avatar,
+          meta: {
+            ...(user.meta ?? {}),
+            preferred_language: profile.preferred_language,
+          },
         },
-      },
-      req,
-    });
+        req,
+      });
+    } catch (err) {
+      const detail = this.formatAxiosError(err);
+      this.logger.error(
+        `Passport SSO profile update failed${
+          detail ? `: ${detail}` : ''
+        }`,
+      );
+      // continue login even if profile decoration fails
+    }
 
     (req as any).user = {
       ...user,
