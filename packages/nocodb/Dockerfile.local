@@ -43,19 +43,21 @@ WORKDIR /usr/src/app
 ENV NC_DOCKER=0.6 \
     NC_TOOL_DIR=/usr/app/data/ \
     NODE_ENV=production \
-    PORT=8080
+    PORT=8010
 
 RUN apk add --update --no-cache \
     curl \
     dumb-init \
     jq \
-    nodejs
+    nodejs \
+    npm \
+    && npm install -g pnpm@9.15.4
 
 # Copy production code & main entry file
 COPY --link --from=builder /usr/src/app/ /usr/src/app/
 COPY --link --from=builder /usr/src/appEntry/ /usr/src/appEntry/
 
-EXPOSE 8080
+EXPOSE 8010
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Start NocoDB

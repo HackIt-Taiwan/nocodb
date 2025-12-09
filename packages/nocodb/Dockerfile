@@ -74,6 +74,9 @@ ENV LITESTREAM_S3_SKIP_VERIFY=false \
     NODE_ENV=production \
     PORT=8010
 
+# Enable pnpm via corepack for runtime commands
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+
 # Install additional runtime dependencies
 RUN apt-get update && apt-get install -y \
     dumb-init \

@@ -95,7 +95,10 @@ ENV LITESTREAM_S3_SKIP_VERIFY=false \
     NC_DOCKER=0.6 \
     NC_TOOL_DIR=/usr/app/data/ \
     NODE_ENV=production \
-    PORT=8080
+    PORT=8010
+
+# Enable pnpm for runtime usage
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 # Install runtime dependencies
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends \
@@ -117,7 +120,7 @@ COPY --link --from=builder     /usr/src/appEntry/                 /usr/src/appEn
 COPY --link --from=bin-builder /usr/src/app/node_modules/sqlite3/ /usr/src/app/node_modules/sqlite3/
 COPY --link --from=bin-builder /usr/src/app/node_modules/sharp/   /usr/src/app/node_modules/sharp/
 
-EXPOSE 8080
+EXPOSE 8010
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Start NocoDB
