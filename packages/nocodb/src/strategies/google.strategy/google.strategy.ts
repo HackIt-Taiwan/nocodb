@@ -111,13 +111,18 @@ export const GoogleStrategyProvider: FactoryProvider = {
     // read client id and secret from env variables
     // if not found provide dummy values to avoid error
     // it will be handled in authenticate method ( reading from plugin )
+    const siteUrl =
+      process.env.NC_PUBLIC_URL?.replace(/\/+$/, '') || 'http://localhost:8080';
+    const dashboardPath = Noco.getConfig().dashboardPath || '/dashboard';
+
     const clientConfig = {
       // use logical OR so empty strings from docker-compose defaults
       // fall back to dummy values and don't break OAuth2Strategy
       clientID: process.env.NC_GOOGLE_CLIENT_ID || 'dummy-id',
       clientSecret: process.env.NC_GOOGLE_CLIENT_SECRET || 'dummy-secret',
-      // todo: update url
-      callbackURL: 'http://localhost:8080/dashboard',
+      // use env/public URL for default callback; actual value is overridden
+      // in authenticate() at request time
+      callbackURL: `${siteUrl}${dashboardPath}`,
       passReqToCallback: true,
       scope: ['profile', 'email'],
     };
