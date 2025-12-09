@@ -72,7 +72,7 @@ ENV LITESTREAM_S3_SKIP_VERIFY=false \
     NC_DOCKER=0.6 \
     NC_TOOL_DIR=/usr/app/data/ \
     NODE_ENV=production \
-    PORT=8080
+    PORT=8010
 
 # Install additional runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -91,7 +91,7 @@ COPY --link ./docker/litestream.yml /etc/litestream.yml
 COPY --link --from=builder /usr/src/app/ /usr/src/app/
 COPY --link --from=builder /usr/src/appEntry/ /usr/src/appEntry/
 
-EXPOSE 8080
+EXPOSE 8010
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Start Nocodb
