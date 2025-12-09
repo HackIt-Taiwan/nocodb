@@ -112,10 +112,12 @@ export const GoogleStrategyProvider: FactoryProvider = {
     // if not found provide dummy values to avoid error
     // it will be handled in authenticate method ( reading from plugin )
     const clientConfig = {
-      clientID: process.env.NC_GOOGLE_CLIENT_ID ?? 'dummy-id',
-      clientSecret: process.env.NC_GOOGLE_CLIENT_SECRET ?? 'dummy-secret',
+      // use logical OR so empty strings from docker-compose defaults
+      // fall back to dummy values and don't break OAuth2Strategy
+      clientID: process.env.NC_GOOGLE_CLIENT_ID || 'dummy-id',
+      clientSecret: process.env.NC_GOOGLE_CLIENT_SECRET || 'dummy-secret',
       // todo: update url
-      callbackURL: 'http://localhost:8080/dahsboard',
+      callbackURL: 'http://localhost:8080/dashboard',
       passReqToCallback: true,
       scope: ['profile', 'email'],
     };
