@@ -18,6 +18,7 @@ export interface AppInfo {
   googleAuthEnabled: boolean
   oidcAuthEnabled: boolean
   oidcProviderName: string | null
+  passportAuthEnabled: boolean
   ncMin: boolean
   oneClick: boolean
   baseHasAdmin: boolean

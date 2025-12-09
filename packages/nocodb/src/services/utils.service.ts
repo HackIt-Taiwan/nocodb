@@ -425,6 +425,10 @@ export class UtilsService {
       ? process.env.NC_OIDC_PROVIDER_NAME ?? 'OpenID Connect'
       : null;
 
+    const passportAuthEnabled = !!(
+      process.env.PASSPORT_API_BASE_URL && process.env.PASSPORT_API_TOKEN
+    );
+
     let giftUrl: string;
 
     if (instance.impacted >= 5) {
@@ -452,6 +456,7 @@ export class UtilsService {
       ),
       oidcAuthEnabled,
       oidcProviderName,
+      passportAuthEnabled,
       oneClick: !!process.env.NC_ONE_CLICK,
       connectToExternalDB: !process.env.NC_CONNECT_TO_EXTERNAL_DB_DISABLED,
       version: packageVersion,
@@ -476,9 +481,10 @@ export class UtilsService {
       isCloud: isCloud,
       automationLogLevel: process.env.NC_AUTOMATION_LOG_LEVEL || 'OFF',
       baseHostName: process.env.NC_BASE_HOST_NAME,
-      disableEmailAuth: this.configService.get('auth.disableEmailAuth', {
-        infer: true,
-      }),
+      disableEmailAuth:
+        this.configService.get('auth.disableEmailAuth', {
+          infer: true,
+        }) || passportAuthEnabled,
       feedEnabled: process.env.NC_DISABLE_PRODUCT_FEED !== 'true',
       mainSubDomain: this.configService.get('mainSubDomain', { infer: true }),
       dashboardPath: this.configService.get('dashboardPath', { infer: true }),

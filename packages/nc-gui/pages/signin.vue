@@ -23,6 +23,23 @@ const form = reactive({
   password: '',
 })
 
+onMounted(() => {
+  if (appInfo.value.passportAuthEnabled) {
+    const baseUrl =
+      appInfo.value.ncSiteUrl?.replace(/\/+$/, '') ||
+      window.location.origin.replace(/\/+$/, '')
+
+    const url = new URL('/auth/passport', baseUrl)
+
+    const continueAfterSignIn = route.query?.continueAfterSignIn
+    if (typeof continueAfterSignIn === 'string' && continueAfterSignIn) {
+      url.searchParams.set('state', continueAfterSignIn)
+    }
+
+    window.location.href = url.toString()
+  }
+})
+
 const formRules: Record<string, RuleObject[]> = {
   email: [
     // E-mail is required
