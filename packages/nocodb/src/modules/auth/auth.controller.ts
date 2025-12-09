@@ -70,6 +70,8 @@ export class AuthController {
       process.env.NC_PUBLIC_URL?.replace(/\/+$/, '') ||
       '';
     const redirectUri = `${siteUrl}/auth/passport/callback`;
+    const dashboardPath = Noco.getConfig().dashboardPath || '/';
+    const restartUri = `${siteUrl}${dashboardPath}#/signin`;
 
     let data: any;
     try {
@@ -80,6 +82,7 @@ export class AuthController {
           redirect_uri: redirectUri,
           fields: ['email', 'nickname', 'avatar_url', 'preferred_language'],
           state: req.query.state,
+          restart_uri: restartUri,
         },
         {
           headers: {
