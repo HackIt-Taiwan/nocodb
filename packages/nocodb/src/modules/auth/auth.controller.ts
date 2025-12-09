@@ -51,6 +51,16 @@ export class AuthController {
     return envUrl || reqUrl || '';
   }
 
+  private resolveRedirectUri(req: NcRequest) {
+    const override = process.env.PASSPORT_REDIRECT_URI?.trim();
+    if (override) {
+      return override;
+    }
+
+    const siteUrl = this.resolveSiteUrl(req);
+    return `${siteUrl}/auth/passport/callback`;
+  }
+
   private formatAxiosError(err: any): string | undefined {
     if (axios.isAxiosError(err)) {
       const status = err.response?.status;
@@ -108,9 +118,16 @@ export class AuthController {
     }
 
     const siteUrl = this.resolveSiteUrl(req);
-    const redirectUri = `${siteUrl}/auth/passport/callback`;
+    const redirectUri = this.resolveRedirectUri(req);
     const dashboardPath = Noco.getConfig().dashboardPath || '/';
-    const restartUri = `${siteUrl}${dashboardPath}#/signin`;
+    let restartUri = `${siteUrl}${dashboardPath}#/signin`;
+
+    try {
+      const parsed = new URL(redirectUri);
+      restartUri = `${parsed.origin}${dashboardPath}#/signin`;
+    } catch {
+      // ignore URL parsing errors and fall back to siteUrl-based restartUri
+    }
 
     let data: any;
     try {
@@ -133,7 +150,9 @@ export class AuthController {
     } catch (err) {
       const detail = this.formatAxiosError(err);
       this.logger.error(
-        `Passport consent request failed${detail ? `: ${detail}` : ''}`,
+        `Passport consent request failed (client_id=${clientId}, redirect_uri=${redirectUri})${
+          detail ? `: ${detail}` : ''
+        }`,
       );
       NcError.forbidden(
         detail ? `Failed to initiate SSO (${detail})` : 'Failed to initiate SSO',
