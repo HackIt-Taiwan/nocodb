@@ -18,6 +18,7 @@ import * as ejs from 'ejs';
 import axios from 'axios';
 import bcrypt from 'bcryptjs';
 import { PresignedUrl } from 'src/models';
+import { User } from '~/models';
 import type { AppConfig } from '~/interface/config';
 
 import { UsersService } from '~/services/users/users.service';
