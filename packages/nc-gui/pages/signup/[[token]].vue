@@ -147,20 +147,18 @@ function navigateSignIn() {
 onMounted(async () => {
   await clearWorkspaces()
 
-   if (appInfo.value.passportAuthEnabled) {
-     const baseUrl =
-       appInfo.value.ncSiteUrl?.replace(/\/+$/, '') ||
-       window.location.origin.replace(/\/+$/, '')
+  const baseUrl =
+    appInfo.value.ncSiteUrl?.replace(/\/+$/, '') ||
+    window.location.origin.replace(/\/+$/, '')
 
-     const url = new URL('/auth/passport', baseUrl)
+  const url = new URL('/auth/passport', baseUrl)
 
-     const continueAfterSignIn = route.query?.continueAfterSignIn
-     if (typeof continueAfterSignIn === 'string' && continueAfterSignIn) {
-       url.searchParams.set('state', continueAfterSignIn)
-     }
+  const continueAfterSignIn = route.query?.continueAfterSignIn
+  if (typeof continueAfterSignIn === 'string' && continueAfterSignIn) {
+    url.searchParams.set('state', continueAfterSignIn)
+  }
 
-     window.location.href = url.toString()
-   }
+  window.location.href = url.toString()
 })
 </script>
 
