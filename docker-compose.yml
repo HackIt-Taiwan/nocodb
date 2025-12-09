@@ -73,7 +73,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     command: >
       sh -c "pnpm install --prod && pnpm --filter nocodb start"
     volumes:
