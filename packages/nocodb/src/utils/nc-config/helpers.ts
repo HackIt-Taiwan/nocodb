@@ -144,6 +144,12 @@ export function xcUrlToDbConfig(
       },
     } as any;
   } else {
+    const protocol = url.protocol.replace(':', '');
+    const client = (driverClientMapping[protocol] || protocol) as DriverClient;
+    const databaseFromPath = url.pathname
+      ? url.pathname.replace(/^\/+/, '')
+      : undefined;
+
     const parsedQuery = {};
     for (const [key, value] of url.searchParams.entries()) {
       const fnd = knownQueryParams.find(
@@ -157,11 +163,28 @@ export function xcUrlToDbConfig(
     }
 
     dbConfig = {
-      client: url.protocol.replace(':', '') as DriverClient,
+      client,
       connection: {
         ...parsedQuery,
         host: url.hostname,
-        port: +url.port,
+        port:
+          url.port && url.port.length
+            ? +url.port
+            : defaultClientPortMapping[client],
+        user:
+          (parsedQuery as any).user ||
+          (parsedQuery as any).u ||
+          url.username ||
+          undefined,
+        password:
+          (parsedQuery as any).password ||
+          (parsedQuery as any).p ||
+          url.password ||
+          undefined,
+        database:
+          (parsedQuery as any).database ||
+          (parsedQuery as any).d ||
+          databaseFromPath,
       },
       acquireConnectionTimeout: 600000,
     };
@@ -242,6 +265,12 @@ export async function metaUrlToDbConfig(urlString): Promise<DbConfig> {
         : {}),
     };
   } else {
+    const protocol = url.protocol.replace(':', '');
+    const client = (driverClientMapping[protocol] || protocol) as DriverClient;
+    const databaseFromPath = url.pathname
+      ? url.pathname.replace(/^\/+/, '')
+      : undefined;
+
     const parsedQuery = {};
     for (const [key, value] of url.searchParams.entries()) {
       const fnd = knownQueryParams.find(
@@ -255,12 +284,29 @@ export async function metaUrlToDbConfig(urlString): Promise<DbConfig> {
     }
 
     dbConfig = {
-      client: url.protocol.replace(':', '') as DriverClient,
+      client,
       connection: {
         ...defaultConnectionConfig,
         ...parsedQuery,
         host: url.hostname,
-        port: +url.port,
+        port:
+          url.port && url.port.length
+            ? +url.port
+            : defaultClientPortMapping[client],
+        user:
+          (parsedQuery as any).user ||
+          (parsedQuery as any).u ||
+          url.username ||
+          undefined,
+        password:
+          (parsedQuery as any).password ||
+          (parsedQuery as any).p ||
+          url.password ||
+          undefined,
+        database:
+          (parsedQuery as any).database ||
+          (parsedQuery as any).d ||
+          databaseFromPath,
       },
       acquireConnectionTimeout: 600000,
       ...defaultConnectionOptions,
