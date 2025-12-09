@@ -1,4 +1,4 @@
-import { NcDebug } from 'nc-gui/utils/debug';
+import { NcDebug } from '~/utils/ncDebug';
 import type { FactoryProvider } from '@nestjs/common';
 import type { IEventEmitter } from '~/modules/event-emitter/event-emitter.interface';
 import { T } from '~/utils';

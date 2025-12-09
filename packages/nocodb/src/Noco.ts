@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import requestIp from 'request-ip';
 import cookieParser from 'cookie-parser';
-import { NcDebug } from 'nc-gui/utils/debug';
+import { NcDebug } from '~/utils/ncDebug';
 import { definePDFJSModule } from 'unpdf';
 import type { INestApplication } from '@nestjs/common';
 import type { MetaService } from '~/meta/meta.service';

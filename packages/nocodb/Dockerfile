@@ -49,10 +49,11 @@ RUN node -e "const fs=require('fs');const pkg=JSON.parse(fs.readFileSync('packag
 # Configure pnpm to use hoisted node_modules for modclean compatibility
 RUN echo "node-linker=hoisted" > .npmrc
 
-# Install production dependencies, reduce node_modules size with modclean,
+# Install deps (include dev for build), build assets, prune dev deps, reduce node_modules size,
 # remove sqlite deps, and add execute permission to start.sh
-RUN pnpm install --prod --shamefully-hoist \
+RUN pnpm install --prod=false --shamefully-hoist \
     && pnpm run docker:build \
+    && pnpm prune --prod \
     && pnpm dlx modclean --patterns="default:*" --ignore="nc-lib-gui/**,dayjs/**,express-status-monitor/**,@azure/msal-node/dist/**,@react-email/**,@linear/**,jsdom/**" --run \
     && rm -rf ./node_modules/sqlite3/deps \
     && chmod +x /usr/src/appEntry/start.sh
