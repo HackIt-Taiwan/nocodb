@@ -68,6 +68,14 @@ export const knownQueryParams = [
     aliases: [],
   },
   {
+    parameter: 'sslmode',
+    aliases: [],
+  },
+  {
+    parameter: 'rejectUnauthorized',
+    aliases: [],
+  },
+  {
     parameter: 'options',
     aliases: ['opt', 'opts'],
   },

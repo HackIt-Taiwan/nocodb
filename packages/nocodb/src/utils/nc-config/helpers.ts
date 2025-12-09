@@ -13,6 +13,57 @@ import {
 import { DriverClient } from './interfaces';
 import type { Connection, DbConfig } from './interfaces';
 
+function toBoolean(value: any): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string')
+    return ['true', '1', 'yes', 'on'].includes(value.toLowerCase());
+  return false;
+}
+
+function buildSslConfig(url: URL, parsedQuery: Record<string, any>) {
+  const rawSsl = parsedQuery?.ssl ?? url.searchParams.get('ssl');
+  const rawSslMode = parsedQuery?.sslmode ?? url.searchParams.get('sslmode');
+  const caFilePath = parsedQuery?.caFilePath ?? url.searchParams.get('caFilePath');
+  const certFilePath =
+    parsedQuery?.certFilePath ?? url.searchParams.get('certFilePath');
+  const keyFilePath =
+    parsedQuery?.keyFilePath ?? url.searchParams.get('keyFilePath');
+  const rawRejectUnauthorized =
+    parsedQuery?.rejectUnauthorized ??
+    url.searchParams.get('rejectUnauthorized');
+
+  const sslMode = rawSslMode?.toString().toLowerCase();
+
+  // sslmode=disable explicitly turns SSL off
+  if (sslMode === 'disable' || sslMode === 'off') {
+    return false;
+  }
+
+  const sslConfig: Record<string, any> = {};
+
+  if (caFilePath) sslConfig.caFilePath = caFilePath;
+  if (certFilePath) sslConfig.certFilePath = certFilePath;
+  if (keyFilePath) sslConfig.keyFilePath = keyFilePath;
+
+  if (rawRejectUnauthorized !== undefined) {
+    sslConfig.rejectUnauthorized = toBoolean(rawRejectUnauthorized);
+  } else if (sslMode === 'no-verify') {
+    sslConfig.rejectUnauthorized = false;
+  }
+
+  const sslRequested =
+    toBoolean(rawSsl) ||
+    !!sslMode ||
+    Object.keys(sslConfig).length > 0;
+
+  if (!sslRequested) {
+    return undefined;
+  }
+
+  return Object.keys(sslConfig).length ? sslConfig : true;
+}
+
 export async function prepareEnv({
   databaseUrlFile = process.env.NC_DATABASE_URL_FILE ||
     process.env.DATABASE_URL_FILE,
@@ -162,10 +213,29 @@ export function xcUrlToDbConfig(
       }
     }
 
+    const {
+      caFilePath,
+      certFilePath,
+      keyFilePath,
+      sslmode,
+      ssl,
+      rejectUnauthorized,
+      ...connectionQuery
+    } = parsedQuery as any;
+
+    const sslConfig = buildSslConfig(url, {
+      caFilePath,
+      certFilePath,
+      keyFilePath,
+      sslmode,
+      ssl,
+      rejectUnauthorized,
+    });
+
     dbConfig = {
       client,
       connection: {
-        ...parsedQuery,
+        ...connectionQuery,
         host: url.hostname,
         port:
           url.port && url.port.length
@@ -185,6 +255,7 @@ export function xcUrlToDbConfig(
           (parsedQuery as any).database ||
           (parsedQuery as any).d ||
           databaseFromPath,
+        ...(sslConfig !== undefined ? { ssl: sslConfig } : {}),
       },
       acquireConnectionTimeout: 600000,
     };
@@ -283,11 +354,30 @@ export async function metaUrlToDbConfig(urlString): Promise<DbConfig> {
       }
     }
 
+    const {
+      caFilePath,
+      certFilePath,
+      keyFilePath,
+      sslmode,
+      ssl,
+      rejectUnauthorized,
+      ...connectionQuery
+    } = parsedQuery as any;
+
+    const sslConfig = buildSslConfig(url, {
+      caFilePath,
+      certFilePath,
+      keyFilePath,
+      sslmode,
+      ssl,
+      rejectUnauthorized,
+    });
+
     dbConfig = {
       client,
       connection: {
         ...defaultConnectionConfig,
-        ...parsedQuery,
+        ...connectionQuery,
         host: url.hostname,
         port:
           url.port && url.port.length
@@ -307,6 +397,7 @@ export async function metaUrlToDbConfig(urlString): Promise<DbConfig> {
           (parsedQuery as any).database ||
           (parsedQuery as any).d ||
           databaseFromPath,
+        ...(sslConfig !== undefined ? { ssl: sslConfig } : {}),
       },
       acquireConnectionTimeout: 600000,
       ...defaultConnectionOptions,
