@@ -13,7 +13,7 @@ import {
 import { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
-import { extractRolesObj } from 'nocodb-sdk';
+import { extractRolesObj, IconType } from 'nocodb-sdk';
 import * as ejs from 'ejs';
 import axios from 'axios';
 import bcrypt from 'bcryptjs';
@@ -229,19 +229,28 @@ export class AuthController {
       } as any);
     }
 
-    // attach extra meta (avatar/language)
+    // attach extra meta (avatar / language) and keep it in sync on every login
     // this is best‑effort only – if the underlying schema is missing optional
     // columns, avoid breaking the whole login flow
     try {
+      const currentMeta = (user.meta ?? {}) as any;
+      const avatarUrl = profile.avatar_url || currentMeta.icon || user.avatar;
+
+      const updatedMeta = {
+        ...currentMeta,
+        // always prefer latest avatar from Passport
+        icon: avatarUrl,
+        iconType: avatarUrl ? IconType.IMAGE : currentMeta.iconType,
+        preferred_language:
+          profile.preferred_language ?? currentMeta.preferred_language,
+      };
+
       await this.usersService.profileUpdate({
         id: user.id,
         params: {
           display_name: profile.nickname,
-          avatar: profile.avatar_url ?? user.avatar,
-          meta: {
-            ...(user.meta ?? {}),
-            preferred_language: profile.preferred_language,
-          },
+          avatar: avatarUrl,
+          meta: updatedMeta,
         },
         req,
       });
