@@ -426,7 +426,9 @@ export class UtilsService {
       : null;
 
     const passportAuthEnabled = !!(
-      process.env.PASSPORT_API_BASE_URL && process.env.PASSPORT_API_TOKEN
+      (process.env.PASSPORT_OIDC_ISSUER ||
+        process.env.PASSPORT_API_BASE_URL) &&
+      process.env.PASSPORT_CLIENT_ID
     );
 
     let giftUrl: string;

@@ -17,6 +17,7 @@ import { extractRolesObj, IconType } from 'nocodb-sdk';
 import * as ejs from 'ejs';
 import axios from 'axios';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { PresignedUrl } from 'src/models';
 import { User } from '~/models';
 import type { AppConfig } from '~/interface/config';
@@ -31,6 +32,11 @@ import { MetaApiLimiterGuard } from '~/guards/meta-api-limiter.guard';
 import { PublicApiLimiterGuard } from '~/guards/public-api-limiter.guard';
 import { NcRequest } from '~/interface/config';
 import Noco from '~/Noco';
+
+const PASSPORT_STATE_COOKIE = 'nc_passport_state';
+const PASSPORT_PKCE_COOKIE = 'nc_passport_pkce';
+const PASSPORT_RETURN_TO_COOKIE = 'nc_passport_return_to';
+const PASSPORT_AUTH_COOKIE_MAX_AGE_MS = 10 * 60 * 1000;
 
 @Controller()
 export class AuthController {
@@ -97,79 +103,130 @@ export class AuthController {
 
   private getPassportConfig() {
     const baseUrl = process.env.PASSPORT_API_BASE_URL?.replace(/\/+$/, '');
-    const apiBase = baseUrl
-      ? baseUrl.endsWith('/api')
-        ? baseUrl
-        : `${baseUrl}/api`
-      : undefined;
+    const oidcIssuer = process.env.PASSPORT_OIDC_ISSUER?.replace(/\/+$/, '');
+    let oidcBase: string | undefined;
+    if (oidcIssuer) {
+      oidcBase = oidcIssuer;
+    } else if (baseUrl) {
+      if (baseUrl.endsWith('/api/oidc')) {
+        oidcBase = baseUrl;
+      } else if (baseUrl.endsWith('/api')) {
+        oidcBase = `${baseUrl}/oidc`;
+      } else {
+        oidcBase = `${baseUrl}/api/oidc`;
+      }
+    }
+
+    const scopesRaw =
+      process.env.PASSPORT_OIDC_SCOPES || 'openid,profile,email';
+    const scopes = scopesRaw
+      .split(/[,\s]+/)
+      .map((scope) => scope.trim())
+      .filter(Boolean);
+    if (!scopes.includes('openid')) {
+      scopes.unshift('openid');
+    }
 
     return {
-      apiBase,
-      token: process.env.PASSPORT_API_TOKEN,
+      oidcBase,
       clientId: process.env.PASSPORT_CLIENT_ID ?? '[one]outline',
+      clientSecret: process.env.PASSPORT_CLIENT_SECRET,
+      scopes,
     };
+  }
+
+  private passportCookieOptions() {
+    return {
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      maxAge: PASSPORT_AUTH_COOKIE_MAX_AGE_MS,
+      domain: process.env.NC_BASE_HOST_NAME || undefined,
+    };
+  }
+
+  private readCookie(req: NcRequest, name: string) {
+    return req.cookies?.[name] || req.signedCookies?.[name];
+  }
+
+  private clearPassportCookies(res: Response) {
+    const domain = process.env.NC_BASE_HOST_NAME || undefined;
+    res.clearCookie(PASSPORT_STATE_COOKIE, { domain });
+    res.clearCookie(PASSPORT_PKCE_COOKIE, { domain });
+    res.clearCookie(PASSPORT_RETURN_TO_COOKIE, { domain });
+  }
+
+  private base64Url(input: Buffer) {
+    return input
+      .toString('base64')
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+  }
+
+  private generateState() {
+    return this.base64Url(crypto.randomBytes(16));
+  }
+
+  private generatePkcePair() {
+    const verifier = this.base64Url(crypto.randomBytes(32));
+    const challenge = this.base64Url(
+      crypto.createHash('sha256').update(verifier).digest(),
+    );
+    return { verifier, challenge };
+  }
+
+  private sanitizeReturnTo(value: string | undefined) {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+      return trimmed;
+    }
+    return null;
   }
 
   @Get('/auth/passport')
   @UseGuards(PublicApiLimiterGuard)
   async passportStart(@Req() req: NcRequest, @Res() res: Response) {
-    const { apiBase, token, clientId } = this.getPassportConfig();
-    if (!apiBase || !token) {
+    const { oidcBase, clientId, clientSecret, scopes } =
+      this.getPassportConfig();
+    if (!oidcBase || !clientId) {
       NcError.forbidden('Passport SSO is not configured');
     }
 
-    const siteUrl = this.resolveSiteUrl(req);
     const redirectUri = this.resolveRedirectUri(req);
-    const dashboardPath = Noco.getConfig().dashboardPath || '/';
-    let restartUri = `${siteUrl}${dashboardPath}#/signin`;
+    const state = this.generateState();
+    const cookieOptions = this.passportCookieOptions();
+    res.cookie(PASSPORT_STATE_COOKIE, state, cookieOptions);
 
-    try {
-      const parsed = new URL(redirectUri);
-      restartUri = `${parsed.origin}${dashboardPath}#/signin`;
-    } catch {
-      // ignore URL parsing errors and fall back to siteUrl-based restartUri
+    const returnTo = this.sanitizeReturnTo(
+      typeof req.query.state === 'string' ? req.query.state : undefined,
+    );
+    if (returnTo) {
+      res.cookie(PASSPORT_RETURN_TO_COOKIE, returnTo, cookieOptions);
     }
 
-    let data: any;
-    try {
-      const response = await axios.post(
-        `${apiBase}/services/consent/request`,
-        {
-          client_id: clientId,
-          redirect_uri: redirectUri,
-          fields: ['email', 'nickname', 'avatar_url', 'preferred_language'],
-          state: req.query.state,
-          restart_uri: restartUri,
-        },
-        {
-          headers: {
-            'X-API-Token': token,
-          },
-        },
-      );
-      data = response.data;
-    } catch (err) {
-      const detail = this.formatAxiosError(err);
-      this.logger.error(
-        `Passport consent request failed (client_id=${clientId}, redirect_uri=${redirectUri})${
-          detail ? `: ${detail}` : ''
-        }`,
-      );
-      NcError.forbidden(
-        detail ? `Failed to initiate SSO (${detail})` : 'Failed to initiate SSO',
-      );
+    let codeChallenge: string | undefined;
+    if (!clientSecret) {
+      const { verifier, challenge } = this.generatePkcePair();
+      res.cookie(PASSPORT_PKCE_COOKIE, verifier, cookieOptions);
+      codeChallenge = challenge;
     }
 
-    if (!data?.consent_url) {
-      this.logger.error(
-        `Passport consent request missing consent_url. Raw response: ${JSON.stringify(
-          data || {},
-        )}`,
-      );
-      NcError.forbidden('SSO initiation failed');
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: scopes.join(' '),
+      state,
+    } as Record<string, string>);
+
+    if (codeChallenge) {
+      params.set('code_challenge', codeChallenge);
+      params.set('code_challenge_method', 'S256');
     }
 
-    return res.redirect(data.consent_url);
+    return res.redirect(`${oidcBase}/authorize?${params.toString()}`);
   }
 
   @Get('/auth/passport/callback')
@@ -177,45 +234,96 @@ export class AuthController {
   async passportCallback(@Req() req: NcRequest, @Res() res: Response) {
     const code = req.query.code as string | undefined;
     if (!code) {
-      NcError.forbidden('Missing consent code');
+      NcError.forbidden('Missing authorization code');
     }
 
-    const { apiBase, token, clientId } = this.getPassportConfig();
-    if (!apiBase || !token) {
+    const { oidcBase, clientId, clientSecret } = this.getPassportConfig();
+    if (!oidcBase || !clientId) {
       NcError.forbidden('Passport SSO is not configured');
+    }
+
+    const stateParam = req.query.state as string | undefined;
+    const cookieState = this.readCookie(req, PASSPORT_STATE_COOKIE);
+    if (!stateParam || !cookieState || stateParam !== cookieState) {
+      this.clearPassportCookies(res);
+      NcError.forbidden('SSO state mismatch');
+    }
+
+    const redirectUri = this.resolveRedirectUri(req);
+    const codeVerifier = this.readCookie(req, PASSPORT_PKCE_COOKIE);
+    if (!clientSecret && !codeVerifier) {
+      this.clearPassportCookies(res);
+      NcError.forbidden('SSO login missing PKCE verifier');
     }
 
     let tokenData: any;
     try {
-      const tokenRes = await axios.post(
-        `${apiBase}/services/consent/token`,
-        {
-          code,
-          client_id: clientId,
+      const body = new URLSearchParams();
+      body.set('grant_type', 'authorization_code');
+      body.set('code', code);
+      body.set('client_id', clientId);
+      body.set('redirect_uri', redirectUri);
+      if (clientSecret) {
+        body.set('client_secret', clientSecret);
+      }
+      if (codeVerifier) {
+        body.set('code_verifier', codeVerifier);
+      }
+
+      const tokenRes = await axios.post(`${oidcBase}/token`, body.toString(), {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
-        {
-          headers: {
-            'X-API-Token': token,
-          },
-        },
-      );
+      });
       tokenData = tokenRes.data;
     } catch (err) {
       const detail = this.formatAxiosError(err);
       this.logger.error(
-        `Passport consent token exchange failed${detail ? `: ${detail}` : ''}`,
+        `Passport OIDC token exchange failed${detail ? `: ${detail}` : ''}`,
       );
+      this.clearPassportCookies(res);
       NcError.forbidden(
         detail ? `SSO login failed (${detail})` : 'SSO login failed',
       );
     }
 
-    const profile = tokenData?.user;
-    if (!profile?.email || !profile?.nickname) {
+    const accessToken = tokenData?.access_token;
+    if (!accessToken) {
+      this.clearPassportCookies(res);
+      NcError.forbidden('SSO login missing access token');
+    }
+
+    let profile: any = {};
+    try {
+      const userinfoRes = await axios.get(`${oidcBase}/userinfo`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      profile = userinfoRes.data || {};
+    } catch (err) {
+      const detail = this.formatAxiosError(err);
+      this.logger.error(
+        `Passport userinfo request failed${detail ? `: ${detail}` : ''}`,
+      );
+      this.clearPassportCookies(res);
+      NcError.forbidden(
+        detail ? `SSO login failed (${detail})` : 'SSO login failed',
+      );
+    }
+
+    const rawEmail = profile.email;
+    const email = rawEmail ? String(rawEmail).toLowerCase() : '';
+    const displayName =
+      profile.nickname ||
+      profile.preferred_username ||
+      profile.name ||
+      email.split('@')[0];
+    if (!email || !displayName) {
+      this.clearPassportCookies(res);
       NcError.forbidden('SSO login missing required fields');
     }
 
-    const email = String(profile.email).toLowerCase();
     let user = await User.getByEmail(email);
 
     if (!user) {
@@ -234,21 +342,22 @@ export class AuthController {
     // columns, avoid breaking the whole login flow
     try {
       const currentMeta = (user.meta ?? {}) as any;
-      const avatarUrl = profile.avatar_url || currentMeta.icon || user.avatar;
+      const avatarUrl = profile.picture || currentMeta.icon || user.avatar;
+      const locale =
+        typeof profile.locale === 'string' ? profile.locale : undefined;
 
       const updatedMeta = {
         ...currentMeta,
         // always prefer latest avatar from Passport
         icon: avatarUrl,
         iconType: avatarUrl ? IconType.IMAGE : currentMeta.iconType,
-        preferred_language:
-          profile.preferred_language ?? currentMeta.preferred_language,
+        preferred_language: locale ?? currentMeta.preferred_language,
       };
 
       await this.usersService.profileUpdate({
         id: user.id,
         params: {
-          display_name: profile.nickname,
+          display_name: displayName,
           avatar: avatarUrl,
           meta: updatedMeta,
         },
@@ -274,7 +383,21 @@ export class AuthController {
 
     const siteUrl = this.resolveSiteUrl(req);
     const dashboardPath = Noco.getConfig().dashboardPath || '/';
-    return res.redirect(`${siteUrl}${dashboardPath}`);
+    const returnTo = this.sanitizeReturnTo(
+      this.readCookie(req, PASSPORT_RETURN_TO_COOKIE),
+    );
+    this.clearPassportCookies(res);
+
+    const baseRedirect = `${siteUrl}${dashboardPath}`;
+    if (returnTo) {
+      const separator = baseRedirect.includes('?') ? '&' : '?';
+      return res.redirect(
+        `${baseRedirect}${separator}continueAfterSignIn=${encodeURIComponent(
+          returnTo,
+        )}`,
+      );
+    }
+    return res.redirect(baseRedirect);
   }
 
   @Post([
