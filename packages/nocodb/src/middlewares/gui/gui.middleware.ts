@@ -20,10 +20,18 @@ export class GuiMiddleware implements NestMiddleware {
       (dashboardPath === '/' && pathname === '/');
 
     if (isDashboardRoot) {
+      const hasQueryValue = (value: unknown) =>
+        typeof value === 'string' && value.length > 0;
+      const hasPassportError =
+        hasQueryValue(req.query?.passport_error) ||
+        hasQueryValue(req.query?.passport_error_description);
+      const hasHashRedirect =
+        hasQueryValue(req.query?.['hash-redirect']) ||
+        hasQueryValue(req.query?.['hash-query-params']);
       const hasRefreshToken =
         !!req.cookies?.refresh_token || !!req.signedCookies?.refresh_token;
 
-      if (!hasRefreshToken) {
+      if (!hasRefreshToken && !hasPassportError && !hasHashRedirect) {
         const state = req.query?.state;
         const stateSuffix =
           typeof state === 'string' && state

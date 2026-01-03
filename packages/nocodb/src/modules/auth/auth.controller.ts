@@ -129,7 +129,7 @@ export class AuthController {
 
     return {
       oidcBase,
-      clientId: process.env.PASSPORT_CLIENT_ID ?? '[one]outline',
+      clientId: process.env.PASSPORT_CLIENT_ID,
       clientSecret: process.env.PASSPORT_CLIENT_SECRET,
       scopes,
     };
@@ -185,6 +185,39 @@ export class AuthController {
     return null;
   }
 
+  private redirectPassportError(
+    req: NcRequest,
+    res: Response,
+    error: string,
+    description?: string,
+  ) {
+    const siteUrl = this.resolveSiteUrl(req);
+    const dashboardPath = Noco.getConfig().dashboardPath || '/';
+    const basePath = `${siteUrl}${dashboardPath}`.replace(/\/+$/, '');
+    const baseRedirect = basePath || '/';
+    const params = new URLSearchParams();
+    params.set('hash-redirect', '/signin');
+    const hashParams = new URLSearchParams();
+    if (error) {
+      hashParams.set('passport_error', error);
+    }
+    if (description) {
+      hashParams.set('passport_error_description', description);
+    }
+    const returnTo = this.sanitizeReturnTo(
+      this.readCookie(req, PASSPORT_RETURN_TO_COOKIE),
+    );
+    if (returnTo) {
+      hashParams.set('continueAfterSignIn', returnTo);
+    }
+    const hashQuery = hashParams.toString();
+    if (hashQuery) {
+      params.set('hash-query-params', encodeURIComponent(hashQuery));
+    }
+    const suffix = params.toString();
+    return res.redirect(`${baseRedirect}${suffix ? `?${suffix}` : ''}`);
+  }
+
   @Get('/auth/passport')
   @UseGuards(PublicApiLimiterGuard)
   async passportStart(@Req() req: NcRequest, @Res() res: Response) {
@@ -232,11 +265,6 @@ export class AuthController {
   @Get('/auth/passport/callback')
   @UseGuards(PublicApiLimiterGuard)
   async passportCallback(@Req() req: NcRequest, @Res() res: Response) {
-    const code = req.query.code as string | undefined;
-    if (!code) {
-      NcError.forbidden('Missing authorization code');
-    }
-
     const { oidcBase, clientId, clientSecret } = this.getPassportConfig();
     if (!oidcBase || !clientId) {
       NcError.forbidden('Passport SSO is not configured');
@@ -246,7 +274,25 @@ export class AuthController {
     const cookieState = this.readCookie(req, PASSPORT_STATE_COOKIE);
     if (!stateParam || !cookieState || stateParam !== cookieState) {
       this.clearPassportCookies(res);
-      NcError.forbidden('SSO state mismatch');
+      return this.redirectPassportError(req, res, 'state_mismatch');
+    }
+
+    const error = req.query.error as string | undefined;
+    const errorDescription = req.query.error_description as string | undefined;
+    if (error) {
+      this.logger.warn(
+        `Passport OIDC authorization failed: ${error}${
+          errorDescription ? ` (${errorDescription})` : ''
+        }`,
+      );
+      this.clearPassportCookies(res);
+      return this.redirectPassportError(req, res, error, errorDescription);
+    }
+
+    const code = req.query.code as string | undefined;
+    if (!code) {
+      this.clearPassportCookies(res);
+      return this.redirectPassportError(req, res, 'missing_code');
     }
 
     const redirectUri = this.resolveRedirectUri(req);

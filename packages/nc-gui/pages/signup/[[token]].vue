@@ -31,6 +31,56 @@ const form = reactive({
   password: '',
 })
 
+const passportErrorMessage = computed(() => {
+  const code =
+    typeof route.query?.passport_error === 'string'
+      ? route.query.passport_error
+      : ''
+  const description =
+    typeof route.query?.passport_error_description === 'string'
+      ? route.query.passport_error_description
+      : ''
+
+  if (!code && !description) return ''
+
+  const normalized = code.replace(/[_-]+/g, ' ').trim()
+  if (code === 'invalid_scope') {
+    return description
+      ? `Passport SSO failed: invalid scope (${description})`
+      : 'Passport SSO failed: invalid scope'
+  }
+  if (code === 'state_mismatch') {
+    return 'Passport SSO failed: state mismatch'
+  }
+  if (code === 'missing_code') {
+    return 'Passport SSO failed: missing authorization code'
+  }
+
+  if (description) {
+    return `Passport SSO failed: ${description}`
+  }
+  return normalized ? `Passport SSO failed: ${normalized}` : 'Passport SSO failed'
+})
+
+const buildPassportUrl = () => {
+  const baseUrl =
+    appInfo.value.ncSiteUrl?.replace(/\/+$/, '') ||
+    window.location.origin.replace(/\/+$/, '')
+
+  const url = new URL('/auth/passport', baseUrl)
+
+  const continueAfterSignIn = route.query?.continueAfterSignIn
+  if (typeof continueAfterSignIn === 'string' && continueAfterSignIn) {
+    url.searchParams.set('state', continueAfterSignIn)
+  }
+
+  return url.toString()
+}
+
+const startPassportSignIn = () => {
+  window.location.href = buildPassportUrl()
+}
+
 const formRules = {
   email: [
     // E-mail is required
@@ -147,18 +197,11 @@ function navigateSignIn() {
 onMounted(async () => {
   await clearWorkspaces()
 
-  const baseUrl =
-    appInfo.value.ncSiteUrl?.replace(/\/+$/, '') ||
-    window.location.origin.replace(/\/+$/, '')
-
-  const url = new URL('/auth/passport', baseUrl)
-
-  const continueAfterSignIn = route.query?.continueAfterSignIn
-  if (typeof continueAfterSignIn === 'string' && continueAfterSignIn) {
-    url.searchParams.set('state', continueAfterSignIn)
+  if (passportErrorMessage.value) {
+    return
   }
 
-  window.location.href = url.toString()
+  startPassportSignIn()
 })
 </script>
 
@@ -176,6 +219,19 @@ onMounted(async () => {
             {{ $route.query.redirect_to === '/referral' ? '& REFER' : '' }}
             {{ $route.query.redirect_to === '/pricing' ? '& BUY' : '' }}
           </h1>
+
+          <Transition name="layout">
+            <div
+              v-if="passportErrorMessage"
+              class="self-center mb-4 bg-red-500 text-white rounded-lg w-3/4 mx-auto p-1"
+              data-testid="nc-passport-error"
+            >
+              <div class="flex items-center gap-2 justify-center">
+                <MaterialSymbolsWarning />
+                <div class="break-words">{{ passportErrorMessage }}</div>
+              </div>
+            </div>
+          </Transition>
 
           <h2 v-if="appInfo.firstUser" class="prose !text-primary font-semibold self-center">
             {{ $t('msg.info.signUp.superAdmin') }}
@@ -219,6 +275,18 @@ onMounted(async () => {
               </a-form-item>
             </template>
             <div class="self-center flex flex-col flex-wrap gap-4 items-center mt-4">
+              <button
+                v-if="passportErrorMessage"
+                data-testid="nc-passport-retry"
+                class="scaling-btn bg-opacity-100"
+                type="button"
+                @click="startPassportSignIn"
+              >
+                <span class="flex items-center gap-2">
+                  <MdiLogin />
+                  Retry Passport sign-up
+                </span>
+              </button>
               <template v-if="!appInfo.disableEmailAuth">
                 <button class="scaling-btn bg-opacity-100" type="submit">
                   <span class="flex items-center gap-2">

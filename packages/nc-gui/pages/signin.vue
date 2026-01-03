@@ -23,7 +23,38 @@ const form = reactive({
   password: '',
 })
 
-onMounted(() => {
+const passportErrorMessage = computed(() => {
+  const code =
+    typeof route.query?.passport_error === 'string'
+      ? route.query.passport_error
+      : ''
+  const description =
+    typeof route.query?.passport_error_description === 'string'
+      ? route.query.passport_error_description
+      : ''
+
+  if (!code && !description) return ''
+
+  const normalized = code.replace(/[_-]+/g, ' ').trim()
+  if (code === 'invalid_scope') {
+    return description
+      ? `Passport SSO failed: invalid scope (${description})`
+      : 'Passport SSO failed: invalid scope'
+  }
+  if (code === 'state_mismatch') {
+    return 'Passport SSO failed: state mismatch'
+  }
+  if (code === 'missing_code') {
+    return 'Passport SSO failed: missing authorization code'
+  }
+
+  if (description) {
+    return `Passport SSO failed: ${description}`
+  }
+  return normalized ? `Passport SSO failed: ${normalized}` : 'Passport SSO failed'
+})
+
+const buildPassportUrl = () => {
   const baseUrl =
     appInfo.value.ncSiteUrl?.replace(/\/+$/, '') ||
     window.location.origin.replace(/\/+$/, '')
@@ -35,7 +66,18 @@ onMounted(() => {
     url.searchParams.set('state', continueAfterSignIn)
   }
 
-  window.location.href = url.toString()
+  return url.toString()
+}
+
+const startPassportSignIn = () => {
+  window.location.href = buildPassportUrl()
+}
+
+onMounted(() => {
+  if (passportErrorMessage.value) {
+    return
+  }
+  startPassportSignIn()
 })
 
 const formRules: Record<string, RuleObject[]> = {
@@ -108,6 +150,15 @@ function navigateForgotPassword() {
 
           <h1 class="prose-2xl font-bold self-center my-4">{{ $t('general.signIn') }}</h1>
 
+          <Transition name="layout">
+            <div v-if="passportErrorMessage" class="self-center mb-4 bg-red-500 text-white rounded-lg w-3/4 mx-auto p-1">
+              <div class="flex items-center gap-2 justify-center">
+                <MaterialSymbolsWarning />
+                <div class="break-words">{{ passportErrorMessage }}</div>
+              </div>
+            </div>
+          </Transition>
+
           <a-form ref="formValidator" :model="form" layout="vertical" no-style @finish="signIn">
             <template v-if="!appInfo.disableEmailAuth">
               <Transition name="layout">
@@ -151,6 +202,18 @@ function navigateForgotPassword() {
             </template>
 
             <div class="self-center flex flex-col flex-wrap gap-4 items-center mt-4 justify-center">
+              <button
+                v-if="passportErrorMessage"
+                data-testid="nc-passport-retry"
+                class="scaling-btn bg-opacity-100"
+                type="button"
+                @click="startPassportSignIn"
+              >
+                <span class="flex items-center gap-2">
+                  <MdiLogin />
+                  Retry Passport sign-in
+                </span>
+              </button>
               <template v-if="!appInfo.disableEmailAuth">
                 <button data-testid="nc-form-signin__submit" class="scaling-btn bg-opacity-100" type="submit">
                   <span class="flex items-center gap-2">

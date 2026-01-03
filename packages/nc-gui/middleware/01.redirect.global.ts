@@ -8,8 +8,10 @@ export default defineNuxtRouteMiddleware(async () => {
 
   // If redirect query param is set, combine it with hash-query-params
   if (redirect) {
+    const basePath = window.location.pathname.replace(/\/+$/, '')
+    const basePrefix = basePath && basePath !== '/' ? basePath : ''
     // Start with the redirect path
-    let url = `/#${redirect}`
+    let url = `${basePrefix}/#${redirect}`
 
     // If hash-query-params exists, decode and append it
     if (encodedQueryParams) {
