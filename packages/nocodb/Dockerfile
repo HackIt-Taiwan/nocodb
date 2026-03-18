@@ -54,7 +54,7 @@ RUN echo "node-linker=hoisted" > .npmrc
 RUN pnpm install --prod=false --shamefully-hoist \
     && pnpm run docker:build \
     && pnpm prune --prod \
-    && pnpm dlx modclean --patterns="default:*" --ignore="nc-lib-gui/**,dayjs/**,express-status-monitor/**,@azure/msal-node/dist/**,@react-email/**,@linear/**,jsdom/**" --run \
+    && pnpm dlx modclean --patterns="default:*" --ignore="nc-lib-gui/**,dayjs/**,express-status-monitor/**,@azure/msal-node/dist/**,@react-email/**,@linear/**,jsdom/**,lru-cache/**" --run \
     && rm -rf ./node_modules/sqlite3/deps \
     && chmod +x /usr/src/appEntry/start.sh
 
